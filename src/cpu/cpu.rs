@@ -31,6 +31,7 @@ pub struct CPU {
     pub register_x: u8,
     pub register_y: u8,
     pub flags: CpuFlags,
+    memory: [u8; 0xffff],
 }
 
 impl Default for CPU {
@@ -47,13 +48,23 @@ impl CPU {
             register_x: 0,
             register_y: 0,
             flags: CpuFlags::from_bits_truncate(0b0010_0100),
+            memory: [0; 0xffff],
         }
     }
-    pub fn interpret(&mut self, program: Vec<u8>) {
-        self.program_counter = 0;
 
+    pub fn load_and_run(&mut self, program: Vec<u8>) {
+        self.load(program);
+        self.run();
+    }
+
+    pub fn load(&mut self, program: Vec<u8>) {
+        self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
+        self.program_counter = 0x8000;
+    }
+
+    pub fn run(&mut self) {
         loop {
-            let opcode = program[self.program_counter as usize];
+            let opcode = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
             match opcode {
@@ -78,7 +89,7 @@ impl CPU {
                 }
                 /* LDA immediate */
                 0xa9 => {
-                    let param = program[self.program_counter as usize];
+                    let param = self.mem_read(self.program_counter);
                     self.program_counter += 1;
 
                     self.register_a = param;
@@ -88,7 +99,7 @@ impl CPU {
                 }
                 /* LDX immediate */
                 0xa2 => {
-                    let param = program[self.program_counter as usize];
+                    let param = self.mem_read(self.program_counter);
                     self.program_counter += 1;
 
                     self.register_x = param;
@@ -98,7 +109,7 @@ impl CPU {
                 }
                 /* LDY immediate */
                 0xa0 => {
-                    let param = program[self.program_counter as usize];
+                    let param = self.mem_read(self.program_counter);
                     self.program_counter += 1;
 
                     self.register_y = param;
@@ -123,6 +134,14 @@ impl CPU {
                 _ => todo!(""),
             }
         }
+    }
+
+    fn mem_read(&mut self, addr: u16) -> u8 {
+        self.memory[addr as usize]
+    }
+
+    fn mem_write(&mut self, addr: u16, data: u8) {
+        self.memory[addr as usize] = data;
     }
 
     fn update_zero_flag(&mut self, last_operation: u8) {
@@ -150,7 +169,7 @@ mod test {
     #[test]
     fn test_0xa9_lda_immidiate_load_data() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa9, 0x05, 0x00]);
+        cpu.load_and_run(vec![0xa9, 0x05, 0x00]);
         assert_eq!(cpu.register_a, 0x05);
         assert_ne!(cpu.flags.contains(CpuFlags::ZERO), true);
         assert_ne!(cpu.flags.contains(CpuFlags::NEGATIV), true);
@@ -159,14 +178,14 @@ mod test {
     #[test]
     fn test_0xa9_lda_zero_flag() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa9, 0x00, 0x00]);
+        cpu.load_and_run(vec![0xa9, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
     }
 
     #[test]
     fn test_0xa2_ldx_immidiate_load_data() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa2, 0x05, 0x00]);
+        cpu.load_and_run(vec![0xa2, 0x05, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
         assert_ne!(cpu.flags.contains(CpuFlags::ZERO), true);
         assert_ne!(cpu.flags.contains(CpuFlags::NEGATIV), true);
@@ -175,14 +194,14 @@ mod test {
     #[test]
     fn test_0xa2_ldx_zero_flag() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa2, 0x00, 0x00]);
+        cpu.load_and_run(vec![0xa2, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
     }
 
     #[test]
     fn test_0xa0_ldy_immidiate_load_data() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa0, 0x05, 0x00]);
+        cpu.load_and_run(vec![0xa0, 0x05, 0x00]);
         assert_eq!(cpu.register_y, 0x05);
         assert_ne!(cpu.flags.contains(CpuFlags::ZERO), true);
         assert_ne!(cpu.flags.contains(CpuFlags::NEGATIV), true);
@@ -191,7 +210,7 @@ mod test {
     #[test]
     fn test_0xa0_ldy_zero_flag() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa0, 0x00, 0x00]);
+        cpu.load_and_run(vec![0xa0, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
     }
 
@@ -199,7 +218,7 @@ mod test {
     fn test_inx_overflow() {
         let mut cpu = CPU::new();
         cpu.register_x = 0xff;
-        cpu.interpret(vec![0xe8, 0xe8, 0x00]);
+        cpu.load_and_run(vec![0xe8, 0xe8, 0x00]);
 
         assert_eq!(cpu.register_x, 1)
     }
@@ -208,7 +227,7 @@ mod test {
     fn test_iny_overflow() {
         let mut cpu = CPU::new();
         cpu.register_y = 0xff;
-        cpu.interpret(vec![0xc8, 0xc8, 0x00]);
+        cpu.load_and_run(vec![0xc8, 0xc8, 0x00]);
 
         assert_eq!(cpu.register_y, 1)
     }
@@ -216,7 +235,7 @@ mod test {
     #[test]
     fn test_lda_tax_inx_ops_working_together() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
+        cpu.load_and_run(vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
 
         assert_eq!(cpu.register_x, 0xc1)
     }
@@ -224,7 +243,7 @@ mod test {
     #[test]
     fn test_lda_tay_iny_ops_working_together() {
         let mut cpu = CPU::new();
-        cpu.interpret(vec![0xa9, 0xc0, 0xa8, 0xc8, 0x00]);
+        cpu.load_and_run(vec![0xa9, 0xc0, 0xa8, 0xc8, 0x00]);
 
         assert_eq!(cpu.register_y, 0xc1)
     }
