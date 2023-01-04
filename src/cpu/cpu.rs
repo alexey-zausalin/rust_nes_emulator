@@ -28,6 +28,8 @@ bitflags! {
 pub struct CPU {
     pub program_counter: u16,
     pub register_a: u8,
+    pub register_x: u8,
+    pub register_y: u8,
     pub flags: CpuFlags,
 }
 
@@ -42,6 +44,8 @@ impl CPU {
         CPU {
             program_counter: 0,
             register_a: 0,
+            register_x: 0,
+            register_y: 0,
             flags: CpuFlags::from_bits_truncate(0b0010_0100),
         }
     }
@@ -60,17 +64,28 @@ impl CPU {
 
                     self.register_a = param;
 
-                    if self.register_a == 0 {
-                        self.flags.insert(CpuFlags::ZERO);
-                    } else {
-                        self.flags.remove(CpuFlags::ZERO);
-                    }
+                    self.update_zero_flag(self.register_a);
+                    self.update_negative_flag(self.register_a);
+                }
+                /* LDX immediate */
+                0xa2 => {
+                    let param = program[self.program_counter as usize];
+                    self.program_counter += 1;
 
-                    if self.register_a & 0b1000_0000 != 0 {
-                        self.flags.insert(CpuFlags::NEGATIV);
-                    } else {
-                        self.flags.remove(CpuFlags::NEGATIV);
-                    }
+                    self.register_x = param;
+
+                    self.update_zero_flag(self.register_x);
+                    self.update_negative_flag(self.register_x);
+                }
+                /* LDY immediate */
+                0xa0 => {
+                    let param = program[self.program_counter as usize];
+                    self.program_counter += 1;
+
+                    self.register_y = param;
+
+                    self.update_zero_flag(self.register_y);
+                    self.update_negative_flag(self.register_y);
                 }
                 /* BRK */
                 0x00 => {
@@ -79,6 +94,22 @@ impl CPU {
                 }
                 _ => todo!(""),
             }
+        }
+    }
+
+    fn update_zero_flag(&mut self, last_operation: u8) {
+        if last_operation == 0 {
+            self.flags.insert(CpuFlags::ZERO);
+        } else {
+            self.flags.remove(CpuFlags::ZERO);
+        }
+    }
+
+    fn update_negative_flag(&mut self, last_operation: u8) {
+        if last_operation >> 7 == 1 {
+            self.flags.insert(CpuFlags::NEGATIV)
+        } else {
+            self.flags.remove(CpuFlags::NEGATIV)
         }
     }
 }
@@ -101,6 +132,38 @@ mod test {
     fn test_0xa9_lda_zero_flag() {
         let mut cpu = CPU::new();
         cpu.interpret(vec![0xa9, 0x00, 0x00]);
+        assert!(cpu.flags.contains(CpuFlags::ZERO));
+    }
+
+    #[test]
+    fn test_0xa2_ldx_immidiate_load_data() {
+        let mut cpu = CPU::new();
+        cpu.interpret(vec![0xa2, 0x05, 0x00]);
+        assert_eq!(cpu.register_x, 0x05);
+        assert_ne!(cpu.flags.contains(CpuFlags::ZERO), true);
+        assert_ne!(cpu.flags.contains(CpuFlags::NEGATIV), true);
+    }
+
+    #[test]
+    fn test_0xa2_ldx_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.interpret(vec![0xa2, 0x00, 0x00]);
+        assert!(cpu.flags.contains(CpuFlags::ZERO));
+    }
+
+    #[test]
+    fn test_0xa0_ldy_immidiate_load_data() {
+        let mut cpu = CPU::new();
+        cpu.interpret(vec![0xa0, 0x05, 0x00]);
+        assert_eq!(cpu.register_y, 0x05);
+        assert_ne!(cpu.flags.contains(CpuFlags::ZERO), true);
+        assert_ne!(cpu.flags.contains(CpuFlags::NEGATIV), true);
+    }
+
+    #[test]
+    fn test_0xa0_ldy_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.interpret(vec![0xa0, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
     }
 }
