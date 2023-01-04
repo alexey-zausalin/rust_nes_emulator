@@ -57,6 +57,25 @@ impl CPU {
             self.program_counter += 1;
 
             match opcode {
+                /* BRK */
+                0x00 => {
+                    self.flags.insert(CpuFlags::BREAK);
+                    return;
+                }
+                /* INX */
+                0xe8 => {
+                    self.register_x = self.register_x.wrapping_add(1);
+
+                    self.update_zero_flag(self.register_y);
+                    self.update_negative_flag(self.register_y);
+                }
+                /* INY */
+                0xc8 => {
+                    self.register_y = self.register_y.wrapping_add(1);
+
+                    self.update_zero_flag(self.register_y);
+                    self.update_negative_flag(self.register_y);
+                }
                 /* LDA immediate */
                 0xa9 => {
                     let param = program[self.program_counter as usize];
@@ -87,10 +106,19 @@ impl CPU {
                     self.update_zero_flag(self.register_y);
                     self.update_negative_flag(self.register_y);
                 }
-                /* BRK */
-                0x00 => {
-                    self.flags.insert(CpuFlags::BREAK);
-                    return;
+                /* TAX */
+                0xaa => {
+                    self.register_x = self.register_a;
+
+                    self.update_zero_flag(self.register_x);
+                    self.update_negative_flag(self.register_x);
+                }
+                /* TAY */
+                0xa8 => {
+                    self.register_y = self.register_a;
+
+                    self.update_zero_flag(self.register_y);
+                    self.update_negative_flag(self.register_y);
                 }
                 _ => todo!(""),
             }
@@ -165,5 +193,39 @@ mod test {
         let mut cpu = CPU::new();
         cpu.interpret(vec![0xa0, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
+    }
+
+    #[test]
+    fn test_inx_overflow() {
+        let mut cpu = CPU::new();
+        cpu.register_x = 0xff;
+        cpu.interpret(vec![0xe8, 0xe8, 0x00]);
+
+        assert_eq!(cpu.register_x, 1)
+    }
+
+    #[test]
+    fn test_iny_overflow() {
+        let mut cpu = CPU::new();
+        cpu.register_y = 0xff;
+        cpu.interpret(vec![0xc8, 0xc8, 0x00]);
+
+        assert_eq!(cpu.register_y, 1)
+    }
+
+    #[test]
+    fn test_lda_tax_inx_ops_working_together() {
+        let mut cpu = CPU::new();
+        cpu.interpret(vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
+
+        assert_eq!(cpu.register_x, 0xc1)
+    }
+
+    #[test]
+    fn test_lda_tay_iny_ops_working_together() {
+        let mut cpu = CPU::new();
+        cpu.interpret(vec![0xa9, 0xc0, 0xa8, 0xc8, 0x00]);
+
+        assert_eq!(cpu.register_y, 0xc1)
     }
 }
