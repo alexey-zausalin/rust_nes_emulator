@@ -1,7 +1,34 @@
+use bitflags::bitflags;
+
+bitflags! {
+/// # Status Register (P) http://wiki.nesdev.com/w/index.php/Status_flags
+///
+///  7 6 5 4 3 2 1 0
+///  N V _ B D I Z C
+///  | |   | | | | +--- Carry Flag
+///  | |   | | | +----- Zero Flag
+///  | |   | | +------- Interrupt Disable
+///  | |   | +--------- Decimal Mode (not used on NES)
+///  | |   +----------- Break Command
+///  | +--------------- Overflow Flag
+///  +----------------- Negative Flag
+///
+    pub struct CpuFlags: u8 {
+        const CARRY             = 0b00000001;
+        const ZERO              = 0b00000010;
+        const INTERRUPT_DISABLE = 0b00000100;
+        const DECIMAL_MODE      = 0b00001000;
+        const BREAK             = 0b00010000;
+        const BREAK2            = 0b00100000;
+        const OVERFLOW          = 0b01000000;
+        const NEGATIV           = 0b10000000;
+    }
+}
+
 pub struct CPU {
     pub program_counter: u16,
     pub register_a: u8,
-    pub status: u8,
+    pub flags: CpuFlags,
 }
 
 impl Default for CPU {
@@ -15,7 +42,7 @@ impl CPU {
         CPU {
             program_counter: 0,
             register_a: 0,
-            status: 0,
+            flags: CpuFlags::from_bits_truncate(0b0010_0100),
         }
     }
     pub fn interpret(&mut self, program: Vec<u8>) {
@@ -34,20 +61,20 @@ impl CPU {
                     self.register_a = param;
 
                     if self.register_a == 0 {
-                        self.status |= 0b0000_0010;
+                        self.flags.insert(CpuFlags::ZERO);
                     } else {
-                        self.status &= 0b1111_1101;
+                        self.flags.remove(CpuFlags::ZERO);
                     }
 
                     if self.register_a & 0b1000_0000 != 0 {
-                        self.status |= 0b1000_0000;
+                        self.flags.insert(CpuFlags::NEGATIV);
                     } else {
-                        self.status &= 0b0111_1111;
+                        self.flags.remove(CpuFlags::NEGATIV);
                     }
                 }
                 /* BRK */
                 0x00 => {
-                    self.status |= 0b0001_0000;
+                    self.flags.insert(CpuFlags::BREAK);
                     return;
                 }
                 _ => todo!(""),
@@ -59,21 +86,21 @@ impl CPU {
 #[cfg(test)]
 mod test {
     use super::*;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{assert_eq, assert_ne};
 
     #[test]
     fn test_0xa9_lda_immidiate_load_data() {
         let mut cpu = CPU::new();
         cpu.interpret(vec![0xa9, 0x05, 0x00]);
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.status & 0b0000_0010, 0b00);
-        assert_eq!(cpu.status & 0b1000_0000, 0);
+        assert_ne!(cpu.flags.contains(CpuFlags::ZERO), true);
+        assert_ne!(cpu.flags.contains(CpuFlags::NEGATIV), true);
     }
 
     #[test]
     fn test_0xa9_lda_zero_flag() {
         let mut cpu = CPU::new();
         cpu.interpret(vec![0xa9, 0x00, 0x00]);
-        assert_eq!(cpu.status & 0b0000_0010, 0b10);
+        assert!(cpu.flags.contains(CpuFlags::ZERO));
     }
 }
