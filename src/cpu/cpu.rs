@@ -1,3 +1,4 @@
+use crate::cpu::mem::{AddressingMode, Mem};
 use bitflags::bitflags;
 
 bitflags! {
@@ -37,25 +38,6 @@ pub struct CPU {
 impl Default for CPU {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-trait Mem {
-    fn mem_read(&mut self, pos: u16) -> u8;
-
-    fn mem_write(&mut self, pos: u16, data: u8);
-
-    fn mem_read_u16(&mut self, pos: u16) -> u16 {
-        let lo = self.mem_read(pos) as u16;
-        let hi = self.mem_read(pos + 1) as u16;
-        (hi << 8) | (lo as u16)
-    }
-
-    fn mem_write_u16(&mut self, pos: u16, data: u16) {
-        let hi = (data >> 8) as u8;
-        let lo = (data & 0xff) as u8;
-        self.mem_write(pos, lo);
-        self.mem_write(pos + 1, hi);
     }
 }
 
@@ -128,33 +110,33 @@ impl CPU {
                 }
                 /* LDA immediate */
                 0xa9 => {
-                    let param = self.mem_read(self.program_counter);
+                    self.lda(&AddressingMode::Immediate);
                     self.program_counter += 1;
-
-                    self.register_a = param;
-
-                    self.update_zero_flag(self.register_a);
-                    self.update_negative_flag(self.register_a);
+                }
+                /* LDA zero page */
+                0xa5 => {
+                    self.lda(&AddressingMode::ZeroPage);
+                    self.program_counter += 1;
                 }
                 /* LDX immediate */
                 0xa2 => {
-                    let param = self.mem_read(self.program_counter);
+                    self.ldx(&AddressingMode::Immediate);
                     self.program_counter += 1;
-
-                    self.register_x = param;
-
-                    self.update_zero_flag(self.register_x);
-                    self.update_negative_flag(self.register_x);
+                }
+                /* LDX zero page */
+                0xa6 => {
+                    self.ldx(&AddressingMode::ZeroPage);
+                    self.program_counter += 1;
                 }
                 /* LDY immediate */
                 0xa0 => {
-                    let param = self.mem_read(self.program_counter);
+                    self.ldy(&AddressingMode::Immediate);
                     self.program_counter += 1;
-
-                    self.register_y = param;
-
-                    self.update_zero_flag(self.register_y);
-                    self.update_negative_flag(self.register_y);
+                }
+                /* LDY zero page */
+                0xa4 => {
+                    self.ldy(&AddressingMode::ZeroPage);
+                    self.program_counter += 1;
                 }
                 /* TAX */
                 0xaa => {
@@ -171,6 +153,90 @@ impl CPU {
                     self.update_negative_flag(self.register_y);
                 }
                 _ => todo!(""),
+            }
+        }
+    }
+
+    fn lda(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_a = value;
+
+        self.update_zero_flag(self.register_a);
+        self.update_negative_flag(self.register_a);
+    }
+
+    fn ldx(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_x = value;
+
+        self.update_zero_flag(self.register_x);
+        self.update_negative_flag(self.register_x);
+    }
+
+    fn ldy(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_y = value;
+
+        self.update_zero_flag(self.register_y);
+        self.update_negative_flag(self.register_y);
+    }
+
+    fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
+        match mode {
+            AddressingMode::Immediate => self.program_counter,
+
+            AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
+
+            AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
+
+            AddressingMode::ZeroPage_X => {
+                let pos = self.mem_read(self.program_counter);
+                let addr = pos.wrapping_add(self.register_x) as u16;
+                addr
+            }
+            AddressingMode::ZeroPage_Y => {
+                let pos = self.mem_read(self.program_counter);
+                let addr = pos.wrapping_add(self.register_y) as u16;
+                addr
+            }
+
+            AddressingMode::Absolute_X => {
+                let base = self.mem_read_u16(self.program_counter);
+                let addr = base.wrapping_add(self.register_x as u16);
+                addr
+            }
+            AddressingMode::Absolute_Y => {
+                let base = self.mem_read_u16(self.program_counter);
+                let addr = base.wrapping_add(self.register_y as u16);
+                addr
+            }
+
+            AddressingMode::Indirect_X => {
+                let base = self.mem_read(self.program_counter);
+
+                let ptr: u8 = (base as u8).wrapping_add(self.register_x);
+                let lo = self.mem_read(ptr as u16);
+                let hi = self.mem_read(ptr.wrapping_add(1) as u16);
+                (hi as u16) << 8 | (lo as u16)
+            }
+            AddressingMode::Indirect_Y => {
+                let base = self.mem_read(self.program_counter);
+
+                let lo = self.mem_read(base as u16);
+                let hi = self.mem_read((base as u8).wrapping_add(1) as u16);
+                let deref_base = (hi as u16) << 8 | (lo as u16);
+                let deref = deref_base.wrapping_add(self.register_y as u16);
+                deref
+            }
+
+            AddressingMode::NoneAddressing => {
+                panic!("mode {:?} is not supported", mode);
             }
         }
     }
@@ -198,7 +264,7 @@ mod test {
     use pretty_assertions::{assert_eq, assert_ne};
 
     #[test]
-    fn test_0xa9_lda_immidiate_load_data() {
+    fn test_lda_immidiate_load_data() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x00]);
         assert_eq!(cpu.register_a, 0x05);
@@ -207,14 +273,22 @@ mod test {
     }
 
     #[test]
-    fn test_0xa9_lda_zero_flag() {
+    fn test_lda_from_memory() {
+        let mut cpu = CPU::new();
+        cpu.mem_write(0x10, 0x55);
+        cpu.load_and_run(vec![0xa5, 0x10, 0x00]);
+        assert_eq!(cpu.register_a, 0x55);
+    }
+
+    #[test]
+    fn test_lda_zero_flag() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
     }
 
     #[test]
-    fn test_0xa2_ldx_immidiate_load_data() {
+    fn test_ldx_immidiate_load_data() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa2, 0x05, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
@@ -223,14 +297,22 @@ mod test {
     }
 
     #[test]
-    fn test_0xa2_ldx_zero_flag() {
+    fn test_ldx_from_memory() {
+        let mut cpu = CPU::new();
+        cpu.mem_write(0x10, 0x55);
+        cpu.load_and_run(vec![0xa6, 0x10, 0x00]);
+        assert_eq!(cpu.register_x, 0x55);
+    }
+
+    #[test]
+    fn test_ldx_zero_flag() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa2, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
     }
 
     #[test]
-    fn test_0xa0_ldy_immidiate_load_data() {
+    fn test_ldy_immidiate_load_data() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa0, 0x05, 0x00]);
         assert_eq!(cpu.register_y, 0x05);
@@ -239,7 +321,15 @@ mod test {
     }
 
     #[test]
-    fn test_0xa0_ldy_zero_flag() {
+    fn test_ldy_from_memory() {
+        let mut cpu = CPU::new();
+        cpu.mem_write(0x10, 0x55);
+        cpu.load_and_run(vec![0xa4, 0x10, 0x00]);
+        assert_eq!(cpu.register_y, 0x55);
+    }
+
+    #[test]
+    fn test_ldy_zero_flag() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa0, 0x00, 0x00]);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
