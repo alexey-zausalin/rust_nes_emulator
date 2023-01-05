@@ -7,9 +7,12 @@ pub enum AddressingMode {
     ZeroPage_Y,
     Absolute,
     Absolute_X,
+    Absolute_X_PageCross,
     Absolute_Y,
+    Absolute_Y_PageCross,
     Indirect_X,
     Indirect_Y,
+    Indirect_Y_PageCross,
     NoneAddressing,
 }
 

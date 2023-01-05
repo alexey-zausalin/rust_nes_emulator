@@ -1,5 +1,7 @@
 use crate::cpu::mem::{AddressingMode, Mem};
+use crate::cpu::opscode;
 use bitflags::bitflags;
+use std::collections::HashMap;
 
 bitflags! {
 /// # Status Register (P) http://wiki.nesdev.com/w/index.php/Status_flags
@@ -84,77 +86,49 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
-        loop {
-            let opcode = self.mem_read(self.program_counter);
-            self.program_counter += 1;
+        let ref opcodes: HashMap<u8, &'static opscode::OpsCode> = *opscode::OPSCODES_MAP;
 
-            match opcode {
+        loop {
+            let code = self.mem_read(self.program_counter);
+            let opcode = opcodes.get(&code).unwrap();
+
+            self.program_counter += 1;
+            let program_counter_state = self.program_counter;
+
+            match code {
                 /* BRK */
                 0x00 => {
                     self.flags.insert(CpuFlags::BREAK);
                     return;
                 }
-                /* INX */
-                0xe8 => {
-                    self.register_x = self.register_x.wrapping_add(1);
-
-                    self.update_zero_flag(self.register_y);
-                    self.update_negative_flag(self.register_y);
-                }
-                /* INY */
-                0xc8 => {
-                    self.register_y = self.register_y.wrapping_add(1);
-
-                    self.update_zero_flag(self.register_y);
-                    self.update_negative_flag(self.register_y);
-                }
-                /* LDA immediate */
-                0xa9 => {
-                    self.lda(&AddressingMode::Immediate);
-                    self.program_counter += 1;
-                }
-                /* LDA zero page */
-                0xa5 => {
-                    self.lda(&AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                }
-                /* LDX immediate */
-                0xa2 => {
-                    self.ldx(&AddressingMode::Immediate);
-                    self.program_counter += 1;
-                }
-                /* LDX zero page */
-                0xa6 => {
-                    self.ldx(&AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                }
-                /* LDY immediate */
-                0xa0 => {
-                    self.ldy(&AddressingMode::Immediate);
-                    self.program_counter += 1;
-                }
-                /* LDY zero page */
-                0xa4 => {
-                    self.ldy(&AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                }
-                /* TAX */
-                0xaa => {
-                    self.register_x = self.register_a;
-
-                    self.update_zero_flag(self.register_x);
-                    self.update_negative_flag(self.register_x);
-                }
-                /* TAY */
-                0xa8 => {
-                    self.register_y = self.register_a;
-
-                    self.update_zero_flag(self.register_y);
-                    self.update_negative_flag(self.register_y);
-                }
+                /* INX */ 0xe8 => self.inx(),
+                /* INY */ 0xc8 => self.iny(),
+                /* LDA */ 0xa9 | 0xa5 => self.lda(&opcode.mode),
+                /* LDX */ 0xa2 | 0xa6 => self.ldx(&opcode.mode),
+                /* LDY */ 0xa0 | 0xa4 => self.ldy(&opcode.mode),
+                /* TAX */ 0xaa => self.tax(),
+                /* TAY */ 0xa8 => self.tay(),
                 _ => todo!(""),
             }
+
+            if program_counter_state == self.program_counter {
+                self.program_counter += (opcode.len - 1) as u16;
+            }
         }
+    }
+
+    fn inx(&mut self) {
+        self.register_x = self.register_x.wrapping_add(1);
+
+        self.update_zero_flag(self.register_y);
+        self.update_negative_flag(self.register_y);
+    }
+
+    fn iny(&mut self) {
+        self.register_y = self.register_y.wrapping_add(1);
+
+        self.update_zero_flag(self.register_y);
+        self.update_negative_flag(self.register_y);
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -187,6 +161,20 @@ impl CPU {
         self.update_negative_flag(self.register_y);
     }
 
+    fn tax(&mut self) {
+        self.register_x = self.register_a;
+
+        self.update_zero_flag(self.register_x);
+        self.update_negative_flag(self.register_x);
+    }
+
+    fn tay(&mut self) {
+        self.register_y = self.register_a;
+
+        self.update_zero_flag(self.register_y);
+        self.update_negative_flag(self.register_y);
+    }
+
     fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
         match mode {
             AddressingMode::Immediate => self.program_counter,
@@ -211,10 +199,16 @@ impl CPU {
                 let addr = base.wrapping_add(self.register_x as u16);
                 addr
             }
+            AddressingMode::Absolute_X_PageCross => {
+                todo!("")
+            }
             AddressingMode::Absolute_Y => {
                 let base = self.mem_read_u16(self.program_counter);
                 let addr = base.wrapping_add(self.register_y as u16);
                 addr
+            }
+            AddressingMode::Absolute_Y_PageCross => {
+                todo!("")
             }
 
             AddressingMode::Indirect_X => {
@@ -233,6 +227,9 @@ impl CPU {
                 let deref_base = (hi as u16) << 8 | (lo as u16);
                 let deref = deref_base.wrapping_add(self.register_y as u16);
                 deref
+            }
+            AddressingMode::Indirect_Y_PageCross => {
+                todo!("")
             }
 
             AddressingMode::NoneAddressing => {
