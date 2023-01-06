@@ -1,21 +1,20 @@
 use crate::cpu::mem::{AddressingMode, Mem};
 use crate::cpu::opscode;
-use bitflags::bitflags;
 use std::collections::HashMap;
 
 bitflags! {
-/// # Status Register (P) http://wiki.nesdev.com/w/index.php/Status_flags
-///
-///  7 6 5 4 3 2 1 0
-///  N V _ B D I Z C
-///  | |   | | | | +--- Carry Flag
-///  | |   | | | +----- Zero Flag
-///  | |   | | +------- Interrupt Disable
-///  | |   | +--------- Decimal Mode (not used on NES)
-///  | |   +----------- Break Command
-///  | +--------------- Overflow Flag
-///  +----------------- Negative Flag
-///
+    /// # Status Register (P) http://wiki.nesdev.com/w/index.php/Status_flags
+    ///
+    ///  7 6 5 4 3 2 1 0
+    ///  N V _ B D I Z C
+    ///  | |   | | | | +--- Carry Flag
+    ///  | |   | | | +----- Zero Flag
+    ///  | |   | | +------- Interrupt Disable
+    ///  | |   | +--------- Decimal Mode (not used on NES)
+    ///  | |   +----------- Break Command
+    ///  | +--------------- Overflow Flag
+    ///  +----------------- Negative Flag
+    ///
     pub struct CpuFlags: u8 {
         const CARRY             = 0b00000001;
         const ZERO              = 0b00000010;
@@ -28,8 +27,12 @@ bitflags! {
     }
 }
 
+const STACK: u16 = 0x0100;
+const STACK_RESET: u8 = 0xfd;
+
 pub struct CPU {
     pub program_counter: u16,
+    pub stack_pointer: u8,
     pub register_a: u8,
     pub register_x: u8,
     pub register_y: u8,
@@ -44,7 +47,7 @@ impl Default for CPU {
 }
 
 impl Mem for CPU {
-    fn mem_read(&mut self, addr: u16) -> u8 {
+    fn mem_read(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
     }
 
@@ -57,6 +60,7 @@ impl CPU {
     pub fn new() -> Self {
         CPU {
             program_counter: 0,
+            stack_pointer: STACK_RESET,
             register_a: 0,
             register_x: 0,
             register_y: 0,
@@ -72,14 +76,15 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
-        self.mem_write_u16(0xfffc, 0x8000);
+        self.memory[0x0600..(0x0600 + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(0xfffc, 0x0600);
     }
 
     pub fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
+        self.stack_pointer = STACK_RESET;
         self.flags = CpuFlags::from_bits_truncate(0b0010_0100);
 
         self.program_counter = self.mem_read_u16(0xfffc);
@@ -95,8 +100,6 @@ impl CPU {
         let ref opcodes: HashMap<u8, &'static opscode::OpsCode> = *opscode::OPSCODES_MAP;
 
         loop {
-            callback(self);
-
             let code = self.mem_read(self.program_counter);
             let opcode = opcodes
                 .get(&code)
@@ -113,17 +116,20 @@ impl CPU {
                 }
                 /* INX */ 0xe8 => self.inx(),
                 /* INY */ 0xc8 => self.iny(),
+                /* JSR */ 0x20 => self.jsr(),
                 /* LDA */ 0xa9 | 0xa5 => self.lda(&opcode.mode),
                 /* LDX */ 0xa2 | 0xa6 => self.ldx(&opcode.mode),
                 /* LDY */ 0xa0 | 0xa4 => self.ldy(&opcode.mode),
                 /* TAX */ 0xaa => self.tax(),
                 /* TAY */ 0xa8 => self.tay(),
-                _ => todo!(""),
+                _ => todo!("{}", &format!("OpCode {:x} is not implemented", code)),
             }
 
             if program_counter_state == self.program_counter {
                 self.program_counter += (opcode.len - 1) as u16;
             }
+
+            callback(self);
         }
     }
 
@@ -139,6 +145,12 @@ impl CPU {
 
         self.update_zero_flag(self.register_y);
         self.update_negative_flag(self.register_y);
+    }
+
+    fn jsr(&mut self) {
+        self.stack_push_u16(self.program_counter + 2 - 1);
+        let target_address = self.mem_read_u16(self.program_counter);
+        self.program_counter = target_address;
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -185,7 +197,31 @@ impl CPU {
         self.update_negative_flag(self.register_y);
     }
 
-    fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
+    fn stack_pop(&mut self) -> u8 {
+        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+        self.mem_read((STACK as u16) + self.stack_pointer as u16)
+    }
+
+    fn stack_push(&mut self, data: u8) {
+        self.mem_write((STACK as u16) + self.stack_pointer as u16, data);
+        self.stack_pointer = self.stack_pointer.wrapping_sub(1)
+    }
+
+    fn stack_push_u16(&mut self, data: u16) {
+        let hi = (data >> 8) as u8;
+        let lo = (data & 0xff) as u8;
+        self.stack_push(hi);
+        self.stack_push(lo);
+    }
+
+    fn stack_pop_u16(&mut self) -> u16 {
+        let lo = self.stack_pop() as u16;
+        let hi = self.stack_pop() as u16;
+
+        hi << 8 | lo
+    }
+
+    fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
         match mode {
             AddressingMode::Immediate => self.program_counter,
 
@@ -271,7 +307,7 @@ mod test {
     use pretty_assertions::{assert_eq, assert_ne};
 
     #[test]
-    fn test_lda_immidiate_load_data() {
+    fn test_lda_immediate_load_data() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x00]);
         assert_eq!(cpu.register_a, 0x05);

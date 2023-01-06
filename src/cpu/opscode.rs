@@ -29,6 +29,9 @@ lazy_static! {
         OpsCode::new(0xe8, "INX", 1, 2, AddressingMode::NoneAddressing),
         OpsCode::new(0xc8, "INY", 1, 2, AddressingMode::NoneAddressing),
 
+        /* Branching */
+        OpsCode::new(0x20, "JSR", 3, 6, AddressingMode::NoneAddressing),
+
         /* Stores, Loads */
         OpsCode::new(0xa9, "LDA", 2, 2, AddressingMode::Immediate),
         OpsCode::new(0xa5, "LDA", 2, 3, AddressingMode::ZeroPage),

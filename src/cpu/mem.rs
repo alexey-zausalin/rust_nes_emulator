@@ -17,11 +17,11 @@ pub enum AddressingMode {
 }
 
 pub trait Mem {
-    fn mem_read(&mut self, pos: u16) -> u8;
+    fn mem_read(&self, pos: u16) -> u8;
 
     fn mem_write(&mut self, pos: u16, data: u8);
 
-    fn mem_read_u16(&mut self, pos: u16) -> u16 {
+    fn mem_read_u16(&self, pos: u16) -> u16 {
         let lo = self.mem_read(pos) as u16;
         let hi = self.mem_read(pos + 1) as u16;
         (hi << 8) | (lo as u16)
