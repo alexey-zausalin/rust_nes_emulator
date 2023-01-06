@@ -2,6 +2,7 @@
 #[allow(non_camel_case_types)]
 pub enum AddressingMode {
     Immediate,
+    Accumulator,
     ZeroPage,
     ZeroPage_X,
     ZeroPage_Y,

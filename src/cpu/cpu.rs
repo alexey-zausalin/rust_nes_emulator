@@ -93,6 +93,7 @@ impl CPU {
     pub fn run(&mut self) {
         self.run_with_callback(|_| {});
     }
+
     pub fn run_with_callback<F>(&mut self, mut callback: F)
     where
         F: FnMut(&mut CPU),
@@ -114,14 +115,31 @@ impl CPU {
                     self.flags.insert(CpuFlags::BREAK);
                     return;
                 }
+                /* NOP */ 0xea => { /* do nothing */ }
+                /* ADC */ 0x69 => self.adc(&opcode.mode),
+                /* AND */ 0x29 => self.and(&opcode.mode),
+                /* LSR */ 0x4a => self.lsr_accumulator(),
+                /* INC */ 0xe6 => self.inc(&opcode.mode),
                 /* INX */ 0xe8 => self.inx(),
                 /* INY */ 0xc8 => self.iny(),
+                /* DEX */ 0xca => self.dex(),
+                /* CMP */ 0xc9 | 0xc5 => self.compare(&opcode.mode, self.register_a),
+                /* CPX */ 0xe4 => self.compare(&opcode.mode, self.register_x),
                 /* JSR */ 0x20 => self.jsr(),
-                /* LDA */ 0xa9 | 0xa5 => self.lda(&opcode.mode),
+                /* RTS */ 0x60 => self.rts(),
+                /* BNE */ 0xd0 => self.branch(!self.flags.contains(CpuFlags::ZERO)),
+                /* BEQ */ 0xf0 => self.branch(self.flags.contains(CpuFlags::ZERO)),
+                /* BCS */ 0xb0 => self.branch(self.flags.contains(CpuFlags::CARRY)),
+                /* BPL */ 0x10 => self.branch(!self.flags.contains(CpuFlags::NEGATIV)),
+                /* BIT */ 0x24 => self.bit(&opcode.mode),
+                /* LDA */ 0xa9 | 0xa5 | 0xb5 => self.lda(&opcode.mode),
                 /* LDX */ 0xa2 | 0xa6 => self.ldx(&opcode.mode),
                 /* LDY */ 0xa0 | 0xa4 => self.ldy(&opcode.mode),
+                /* STA */ 0x85 | 0x95 | 0x81 | 0x91 => self.sta(&opcode.mode),
+                /* CLC */ 0x18 => self.clear_carry_flag(),
                 /* TAX */ 0xaa => self.tax(),
                 /* TAY */ 0xa8 => self.tay(),
+                /* TXA */ 0x8a => self.txa(),
                 _ => todo!("{}", &format!("OpCode {:x} is not implemented", code)),
             }
 
@@ -131,6 +149,42 @@ impl CPU {
 
             callback(self);
         }
+    }
+
+    fn adc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.add_to_register_a(value);
+    }
+
+    fn and(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+
+        self.set_register_a(data & self.register_a);
+    }
+
+    fn lsr_accumulator(&mut self) {
+        let mut data = self.register_a;
+        if data & 1 == 1 {
+            self.set_carry_flag();
+        } else {
+            self.clear_carry_flag();
+        }
+        data = data >> 1;
+        self.set_register_a(data)
+    }
+
+    fn inc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let mut data = self.mem_read(addr);
+
+        data = data.wrapping_add(1);
+        self.mem_write(addr, data);
+
+        self.update_zero_flag(data);
+        self.update_negative_flag(data);
     }
 
     fn inx(&mut self) {
@@ -147,10 +201,59 @@ impl CPU {
         self.update_negative_flag(self.register_y);
     }
 
+    fn dex(&mut self) {
+        self.register_x = self.register_y.wrapping_sub(1);
+
+        self.update_zero_flag(self.register_x);
+        self.update_negative_flag(self.register_x);
+    }
+
+    fn compare(&mut self, mode: &AddressingMode, compare_with: u8) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+
+        if data <= compare_with {
+            self.set_carry_flag();
+        } else {
+            self.clear_carry_flag();
+        }
+
+        self.update_zero_flag(compare_with.wrapping_sub(data));
+        self.update_negative_flag(compare_with.wrapping_sub(data));
+    }
+
     fn jsr(&mut self) {
         self.stack_push_u16(self.program_counter + 2 - 1);
         let target_address = self.mem_read_u16(self.program_counter);
         self.program_counter = target_address;
+    }
+
+    fn rts(&mut self) {
+        self.program_counter = self.stack_pop_u16() + 1;
+    }
+
+    fn branch(&mut self, condition: bool) {
+        if condition {
+            let jump: i8 = self.mem_read(self.program_counter) as i8;
+            let jump_addr = self
+                .program_counter
+                .wrapping_add(1)
+                .wrapping_add(jump as u16);
+
+            self.program_counter = jump_addr;
+        }
+    }
+
+    fn bit(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+
+        let and = self.register_a & data;
+
+        self.update_zero_flag(and);
+
+        self.flags.set(CpuFlags::NEGATIV, data & 0b10000000 > 0);
+        self.flags.set(CpuFlags::OVERFLOW, data & 0b01000000 > 0);
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -183,6 +286,11 @@ impl CPU {
         self.update_negative_flag(self.register_y);
     }
 
+    fn sta(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_a);
+    }
+
     fn tax(&mut self) {
         self.register_x = self.register_a;
 
@@ -195,6 +303,57 @@ impl CPU {
 
         self.update_zero_flag(self.register_y);
         self.update_negative_flag(self.register_y);
+    }
+
+    fn txa(&mut self) {
+        self.register_a = self.register_x;
+
+        self.update_zero_flag(self.register_a);
+        self.update_negative_flag(self.register_a);
+    }
+
+    /// note: ignoring decimal mode
+    /// http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+    fn add_to_register_a(&mut self, value: u8) {
+        let sum = self.register_a as u16
+            + value as u16
+            + (if self.flags.contains(CpuFlags::CARRY) {
+                1
+            } else {
+                0
+            }) as u16;
+
+        let carry = sum > 0xff;
+
+        if carry {
+            self.set_carry_flag();
+        } else {
+            self.clear_carry_flag();
+        }
+
+        let result = sum as u8;
+
+        if (value ^ result) & (result ^ self.register_a) & 0x80 != 0 {
+            self.flags.insert(CpuFlags::OVERFLOW);
+        } else {
+            self.flags.remove(CpuFlags::OVERFLOW)
+        }
+
+        self.set_register_a(result);
+    }
+
+    fn set_register_a(&mut self, value: u8) {
+        self.register_a = value;
+        self.update_zero_flag(self.register_a);
+        self.update_negative_flag(self.register_a);
+    }
+
+    fn set_carry_flag(&mut self) {
+        self.flags.insert(CpuFlags::CARRY);
+    }
+
+    fn clear_carry_flag(&mut self) {
+        self.flags.remove(CpuFlags::CARRY);
     }
 
     fn stack_pop(&mut self) -> u8 {
@@ -278,7 +437,7 @@ impl CPU {
                 todo!("")
             }
 
-            AddressingMode::NoneAddressing => {
+            AddressingMode::Accumulator | AddressingMode::NoneAddressing => {
                 panic!("mode {:?} is not supported", mode);
             }
         }
