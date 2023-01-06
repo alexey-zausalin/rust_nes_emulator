@@ -331,7 +331,7 @@ mod test {
     }
 
     #[test]
-    fn test_ldx_immidiate_load_data() {
+    fn test_ldx_immediate_load_data() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa2, 0x05, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
@@ -355,7 +355,7 @@ mod test {
     }
 
     #[test]
-    fn test_ldy_immidiate_load_data() {
+    fn test_ldy_immediate_load_data() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa0, 0x05, 0x00]);
         assert_eq!(cpu.register_y, 0x05);
@@ -381,7 +381,11 @@ mod test {
     #[test]
     fn test_inx_overflow() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa2, 0xff, 0xe8, 0xe8, 0x00]);
+        cpu.load(vec![0xe8, 0xe8, 0x00]);
+        cpu.reset();
+        cpu.register_x = 0xff;
+
+        cpu.run();
 
         assert_eq!(cpu.register_x, 1)
     }
@@ -389,7 +393,11 @@ mod test {
     #[test]
     fn test_iny_overflow() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa0, 0xff, 0xc8, 0xc8, 0x00]);
+        cpu.load(vec![0xc8, 0xc8, 0x00]);
+        cpu.reset();
+        cpu.register_y = 0xff;
+
+        cpu.run();
 
         assert_eq!(cpu.register_y, 1)
     }
