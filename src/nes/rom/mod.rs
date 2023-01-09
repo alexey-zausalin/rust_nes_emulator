@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Rom {
     data: Vec<u8>,
 }

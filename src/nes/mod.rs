@@ -1,2 +1,4 @@
-pub mod ram;
-pub mod rom;
+mod cpu;
+mod helper;
+mod ram;
+mod rom;
