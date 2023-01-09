@@ -1,15 +1,26 @@
-use crate::nes::helper::bool_to_u8;
-
-#[derive(Debug)]
-struct Status {
-    negative: bool,
-    overflow: bool,
-    reserved: bool,
-    break_mode: bool,
-    decimal_mode: bool,
-    interrupt: bool,
-    zero: bool,
-    carry: bool,
+bitflags! {
+/// # Status Register (P) http://wiki.nesdev.com/w/index.php/Status_flags
+///
+///  7 6 5 4 3 2 1 0
+///  N V _ B D I Z C
+///  | |   | | | | +--- Carry Flag
+///  | |   | | | +----- Zero Flag
+///  | |   | | +------- Interrupt Disable
+///  | |   | +--------- Decimal Mode (not used on NES)
+///  | |   +----------- Break Command
+///  | +--------------- Overflow Flag
+///  +----------------- Negative Flag
+///
+    pub struct CpuFlags: u8 {
+        const CARRY             = 0b00000001;
+        const ZERO              = 0b00000010;
+        const INTERRUPT_DISABLE = 0b00000100;
+        const DECIMAL_MODE      = 0b00001000;
+        const BREAK             = 0b00010000;
+        const RESERVED          = 0b00100000;
+        const OVERFLOW          = 0b01000000;
+        const NEGATIV           = 0b10000000;
+    }
 }
 
 #[allow(non_snake_case)]
@@ -20,7 +31,7 @@ pub struct Registers {
     Y: u8,
     SP: u8,
     PC: u16,
-    P: Status,
+    P: CpuFlags,
 }
 
 #[allow(non_snake_case)]
@@ -102,16 +113,7 @@ impl Registers {
             Y: 0,
             PC: 0x8000,
             SP: 0xFD,
-            P: Status {
-                negative: false,
-                overflow: false,
-                reserved: true,
-                break_mode: true,
-                decimal_mode: false,
-                interrupt: true,
-                zero: false,
-                carry: false,
-            },
+            P: CpuFlags::from_bits_truncate(0b00110100),
         }
     }
 }
@@ -139,14 +141,7 @@ impl CpuRegisters for Registers {
     }
 
     fn get_P(&self) -> u8 {
-        bool_to_u8(self.P.negative) << 7
-            | bool_to_u8(self.P.overflow) << 6
-            | bool_to_u8(self.P.reserved) << 5
-            | bool_to_u8(self.P.break_mode) << 4
-            | bool_to_u8(self.P.decimal_mode) << 3
-            | bool_to_u8(self.P.interrupt) << 2
-            | bool_to_u8(self.P.zero) << 1
-            | bool_to_u8(self.P.carry) as u8
+        self.P.bits
     }
 
     fn set_A(&mut self, v: u8) -> &mut Self {
@@ -170,14 +165,7 @@ impl CpuRegisters for Registers {
     }
 
     fn set_P(&mut self, v: u8) -> &mut Self {
-        self.P.negative = v & 0x80 == 0x80;
-        self.P.overflow = v & 0x40 == 0x40;
-        self.P.reserved = v & 0x20 == 0x20;
-        self.P.break_mode = v & 0x10 == 0x10;
-        self.P.decimal_mode = v & 0x08 == 0x08;
-        self.P.interrupt = v & 0x04 == 0x04;
-        self.P.zero = v & 0x02 == 0x02;
-        self.P.carry = v & 0x01 == 0x01;
+        self.P = CpuFlags::from_bits_truncate(v);
         self
     }
 
@@ -187,84 +175,84 @@ impl CpuRegisters for Registers {
     }
 
     fn set_negative(&mut self, v: bool) -> &mut Self {
-        self.P.negative = v;
+        self.P.set(CpuFlags::NEGATIV, v);
         self
     }
 
     fn set_overflow(&mut self, v: bool) -> &mut Self {
-        self.P.overflow = v;
+        self.P.set(CpuFlags::OVERFLOW, v);
         self
     }
 
     fn set_reserved(&mut self, v: bool) -> &mut Self {
-        self.P.reserved = v;
+        self.P.set(CpuFlags::RESERVED, v);
         self
     }
 
     fn set_break(&mut self, v: bool) -> &mut Self {
-        self.P.break_mode = v;
+        self.P.set(CpuFlags::BREAK, v);
         self
     }
 
     fn set_interrupt(&mut self, v: bool) -> &mut Self {
-        self.P.interrupt = v;
+        self.P.set(CpuFlags::INTERRUPT_DISABLE, v);
         self
     }
 
     fn set_zero(&mut self, v: bool) -> &mut Self {
-        self.P.zero = v;
+        self.P.set(CpuFlags::ZERO, v);
         self
     }
 
     fn set_decimal(&mut self, v: bool) -> &mut Self {
-        self.P.decimal_mode = v;
+        self.P.set(CpuFlags::DECIMAL_MODE, v);
         self
     }
 
     fn set_carry(&mut self, v: bool) -> &mut Self {
-        self.P.carry = v;
+        self.P.set(CpuFlags::CARRY, v);
         self
     }
 
     fn get_negative(&self) -> bool {
-        self.P.negative
+        self.P.contains(CpuFlags::NEGATIV)
     }
 
     fn get_overflow(&self) -> bool {
-        self.P.overflow
+        self.P.contains(CpuFlags::OVERFLOW)
     }
 
     fn get_reserved(&self) -> bool {
-        self.P.reserved
+        self.P.contains(CpuFlags::RESERVED)
     }
 
     fn get_break(&self) -> bool {
-        self.P.break_mode
+        self.P.contains(CpuFlags::BREAK)
     }
 
     fn get_interrupt(&self) -> bool {
-        self.P.interrupt
+        self.P.contains(CpuFlags::INTERRUPT_DISABLE)
     }
 
     fn get_zero(&self) -> bool {
-        self.P.zero
+        self.P.contains(CpuFlags::ZERO)
     }
 
     fn get_decimal(&self) -> bool {
-        self.P.decimal_mode
+        self.P.contains(CpuFlags::DECIMAL_MODE)
     }
 
     fn get_carry(&self) -> bool {
-        self.P.carry
+        self.P.contains(CpuFlags::CARRY)
     }
 
     fn update_negative_by(&mut self, v: u8) -> &mut Self {
-        self.P.negative = v & 0x80 == 0x80;
+        self.set_negative(v & 0x80 == 0x80);
         self
     }
 
     fn update_zero_by(&mut self, v: u8) -> &mut Self {
-        self.P.zero = v == 0;
+        self.set_zero(v == 0);
         self
     }
 
