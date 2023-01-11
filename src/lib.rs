@@ -1,3 +1,4 @@
+mod bus;
 pub mod cpu;
 
 #[macro_use]
