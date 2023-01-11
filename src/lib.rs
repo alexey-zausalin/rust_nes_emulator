@@ -7,3 +7,6 @@ extern crate bitflags;
 
 #[macro_use]
 extern crate lazy_static;
+
+#[macro_use]
+extern crate enum_display_derive;

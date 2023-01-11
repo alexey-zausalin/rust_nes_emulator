@@ -1,5 +1,6 @@
 use crate::cpu::mem::AddressingMode;
 use std::collections::HashMap;
+use std::fmt::Display;
 
 pub struct OpCode {
     pub code: u8,
@@ -21,6 +22,7 @@ impl OpCode {
     }
 }
 
+#[derive(Display)]
 pub enum Instruction {
     // Load/Store Operations
     LDA, //	Load Accumulator	N,Z
