@@ -1,5 +1,6 @@
-mod bus;
+pub mod bus;
 pub mod cpu;
+pub mod rom;
 
 #[macro_use]
 extern crate bitflags;

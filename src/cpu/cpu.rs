@@ -42,13 +42,6 @@ pub struct CPU {
     bus: Bus,
 }
 
-impl Default for CPU {
-    fn default() -> Self {
-        let bus = Bus::new();
-        Self::new(bus)
-    }
-}
-
 impl Mem for CPU {
     fn mem_read(&self, addr: u16) -> u8 {
         self.bus.mem_read(addr)
@@ -687,11 +680,13 @@ impl CPU {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::rom::test;
     use pretty_assertions::{assert_eq, assert_ne};
 
     #[test]
     fn test_lda_immediate_load_data() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x05, 0x00]);
         assert_eq!(cpu.register_a, 0x05);
         assert_ne!(cpu.status.contains(CpuFlags::ZERO), true);
@@ -700,7 +695,8 @@ mod test {
 
     #[test]
     fn test_lda_from_memory() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.mem_write(0x10, 0x55);
         cpu.load_and_run(vec![0xa5, 0x10, 0x00]);
         assert_eq!(cpu.register_a, 0x55);
@@ -708,14 +704,16 @@ mod test {
 
     #[test]
     fn test_lda_zero_flag() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x00, 0x00]);
         assert!(cpu.status.contains(CpuFlags::ZERO));
     }
 
     #[test]
     fn test_ldx_immediate_load_data() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa2, 0x05, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
         assert_ne!(cpu.status.contains(CpuFlags::ZERO), true);
@@ -724,7 +722,8 @@ mod test {
 
     #[test]
     fn test_ldx_from_memory() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.mem_write(0x10, 0x55);
         cpu.load_and_run(vec![0xa6, 0x10, 0x00]);
         assert_eq!(cpu.register_x, 0x55);
@@ -732,14 +731,16 @@ mod test {
 
     #[test]
     fn test_ldx_zero_flag() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa2, 0x00, 0x00]);
         assert!(cpu.status.contains(CpuFlags::ZERO));
     }
 
     #[test]
     fn test_ldy_immediate_load_data() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa0, 0x05, 0x00]);
         assert_eq!(cpu.register_y, 0x05);
         assert_ne!(cpu.status.contains(CpuFlags::ZERO), true);
@@ -748,7 +749,8 @@ mod test {
 
     #[test]
     fn test_ldy_from_memory() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.mem_write(0x10, 0x55);
         cpu.load_and_run(vec![0xa4, 0x10, 0x00]);
         assert_eq!(cpu.register_y, 0x55);
@@ -756,14 +758,16 @@ mod test {
 
     #[test]
     fn test_ldy_zero_flag() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa0, 0x00, 0x00]);
         assert!(cpu.status.contains(CpuFlags::ZERO));
     }
 
     #[test]
     fn test_inx_overflow() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load(vec![0xe8, 0xe8, 0x00]);
         cpu.reset();
         cpu.register_x = 0xff;
@@ -775,7 +779,8 @@ mod test {
 
     #[test]
     fn test_iny_overflow() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load(vec![0xc8, 0xc8, 0x00]);
         cpu.reset();
         cpu.register_y = 0xff;
@@ -787,7 +792,8 @@ mod test {
 
     #[test]
     fn test_lda_tax_inx_ops_working_together() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
 
         assert_eq!(cpu.register_x, 0xc1)
@@ -795,7 +801,8 @@ mod test {
 
     #[test]
     fn test_lda_tay_iny_ops_working_together() {
-        let mut cpu = CPU::default();
+        let bus = Bus::new(test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0xc0, 0xa8, 0xc8, 0x00]);
 
         assert_eq!(cpu.register_y, 0xc1)
