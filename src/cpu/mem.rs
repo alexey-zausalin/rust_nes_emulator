@@ -1,20 +1,19 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum AddressingMode {
-    Immediate,
+    Implicit,
     Accumulator,
+    Immediate,
     ZeroPage,
-    ZeroPage_X,
-    ZeroPage_Y,
+    ZeroPageX,
+    ZeroPageY,
+    Relative,
     Absolute,
-    Absolute_X,
-    Absolute_X_PageCross,
-    Absolute_Y,
-    Absolute_Y_PageCross,
-    Indirect_X,
-    Indirect_Y,
-    Indirect_Y_PageCross,
-    NoneAddressing,
+    AbsoluteX,
+    AbsoluteY,
+    Indirect,
+    IndirectX,
+    IndirectY,
 }
 
 pub trait Mem {
